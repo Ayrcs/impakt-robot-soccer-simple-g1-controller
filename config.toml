@@ -9,6 +9,7 @@ high_level_body_movements_topic = "/api/sport/request" # unitree_api/msg/Request
 enabled = true
 yolo_model_path = "models/ball_yolov8.pt"
 yolo_confidence_threshold = 0.7
+near_ball_px_diameter = 80
 rate = 10
 
 [camera]
@@ -26,5 +27,6 @@ rate = 10
 
 [body]
 enabled = true
+caution_factor = 5 # 2: fast, 5: normal, 8: slow
 rate=10
 

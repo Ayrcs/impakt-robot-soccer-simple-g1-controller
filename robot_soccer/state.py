@@ -6,6 +6,9 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from robot_soccer.behavior.states import Behavior
+from robot_soccer.config import Config
+
 
 @dataclass()
 class Head:
@@ -34,14 +37,22 @@ class Image:
     timestamp: float = None
 
 
-
 class SharedState:
-    def __init__(self):
+    def __init__(self, config: Config) -> None:
         self._lock = threading.Lock()
         self._ball = Ball()
         self._head = Head()
         self._image = Image()
+        self._config = config
+        self._behavior: Behavior = Behavior.BOOTING
         self.is_running = True
+
+    def get_behavior(self) -> Behavior:
+        return self._behavior
+
+    def set_behavior(self, behavior: Behavior) -> None:
+        with self._lock:
+            self._behavior = behavior
 
     def get_image(self) -> Image:
         return self._image
@@ -81,8 +92,9 @@ class SharedState:
         else:
             return self._ball.timestamp > (time.time() - 2)
 
-    def is_ball_close(self):
-        if self._ball.diameter is None:
-            return False
-        else:
-            return self._ball.diameter > 50
+    def is_ball_close(self) -> bool:
+        return (
+                self._ball.seen
+                and self._ball.diameter is not None
+                and self._ball.diameter > 50
+        )

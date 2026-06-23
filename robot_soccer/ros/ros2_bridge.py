@@ -4,15 +4,14 @@ import time
 from typing import Optional
 
 import cv2
+import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException, ShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
-from unitree_go.msg import MotorStates, MotorCmd, MotorCmds
 from unitree_api.msg import Request, RequestHeader, RequestIdentity, RequestLease, RequestPolicy
-
-import numpy as np
+from unitree_go.msg import MotorStates, MotorCmd, MotorCmds
 
 from robot_soccer.config import Config
 from robot_soccer.state import Head, SharedState

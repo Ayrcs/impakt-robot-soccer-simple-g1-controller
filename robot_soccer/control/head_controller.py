@@ -18,29 +18,11 @@ class HeadController:
         self._rate = Rate(self._config.servos.rate)
         self._thread: Optional[threading.Thread] = None
 
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        pass
-
-    def _run(self) -> None:
-        while self._shared_state.is_running:
-            if self._shared_state.is_ball_recently_seen():
-                self._run_ball_follow()
-            else:
-                self._run_ball_research()
-
-    def _run_ball_follow(self) -> None:
+    def stare_ball(self) -> None:
         yaw, pitch = self._compute_target_angles()
         self.look_at(yaw=yaw, pitch=pitch)
-        self._rate.sleep()
 
-    def _run_ball_research(self) -> None:
+    def circle_until_detected(self) -> bool:
         t = 0.0
         dt = 0.05
         speed = 2  # radians/seconde
@@ -53,6 +35,8 @@ class HeadController:
 
             t += speed * dt
             time.sleep(dt)
+
+        return self._shared_state.is_ball_recently_seen()
 
     def _compute_target_angles(self):
         ball = self._shared_state.get_ball()
@@ -80,12 +64,3 @@ class HeadController:
         if value < min:
             return min
         return value
-
-    def _wait_for_ball(self):
-        print("Waiting for ball...")
-        while True:
-            ball = self._shared_state.get_ball()
-            if ball.x is not None and ball.y is not None:
-                break
-            self._rate.sleep()
-        print("Ball detected for the first time")
