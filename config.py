@@ -10,6 +10,7 @@ except ModuleNotFoundError:
 
 class Config:
     def __init__(self, path: Optional[Union[str, Path]] = None) -> None:
+        self.body = None
         self.servos = None
         self.camera = None
         self.detector = None

@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 from typing import Optional
@@ -9,6 +10,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 from unitree_go.msg import MotorStates, MotorCmd, MotorCmds
+from unitree_api.msg import Request, RequestHeader, RequestIdentity, RequestLease, RequestPolicy
 
 import numpy as np
 
@@ -46,6 +48,13 @@ class Ros2Bridge(Node):
         self._head_servos_command_publisher = self.create_publisher(
             MotorCmds,
             config.ros2.head_servos_command_topic,
+            10,
+        )
+
+        # Publisher for high control body movements
+        self._body_high_level_command_publisher = self.create_publisher(
+            Request,
+            config.ros2.high_level_body_movements_topic,
             10,
         )
 
@@ -105,11 +114,38 @@ class Ros2Bridge(Node):
         self._head_servos_command_publisher.publish(message)
         # print(f"Published head message={message}")
 
+    def publish_body_command(self, surge: float = 0.0, sway: float = 0.0, yaw: float = 0.0, duration: float = 0.0) -> None:
+        message: Request = self._build_body_command_payload(surge=surge, sway=sway, yaw=yaw, duration=duration)
+        self._body_high_level_command_publisher.publish(message)
+        print(f"Published head message={message}")
+
     def _build_head_command_payload(self, mode: int, yaw: float, pitch: float) -> MotorCmds:
-        msg: MotorCmds = MotorCmds(
+        return MotorCmds(
             cmds=[
                 MotorCmd(mode=mode, q=float(yaw)),
                 MotorCmd(mode=mode, q=float(pitch))
             ]
         )
-        return msg
+
+    def _build_body_command_payload(self, surge: float = 0.0, sway: float = 0.0, yaw: float = 0.0,
+                                    duration: float = 0.0) -> Request:
+        return Request(
+            header=RequestHeader(
+                identity=RequestIdentity(
+                    id=0,
+                    api_id=7105,
+                ),
+                lease=RequestLease(
+                    id=0,
+                ),
+                policy=RequestPolicy(
+                    priority=0,
+                    noreply=False,
+                ),
+            ),
+            parameter=json.dumps({
+                "velocity": [float(surge), float(sway), float(yaw)],
+                "duration": float(duration),
+            }),
+            binary=[],
+        )

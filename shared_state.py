@@ -9,18 +9,22 @@ import numpy as np
 
 @dataclass()
 class Head:
-    mode: int = 0
-    yaw: float = 0.0
-    pitch: float = 0.0
+    mode: int = None
+    yaw: float = None
+    pitch: float = None
     timestamp: float = None
 
 @dataclass()
 class Ball:
-    x: float = 0.0
-    y: float = 0.0
-    distance: float = 0.0
+    x: float = None
+    y: float = None
+    error_x: float = None
+    error_y: float = None
+    diameter: float = None
+    distance: float = None
     timestamp: float = None
-    confidence: float = 0.0
+    confidence: float = None
+    seen: bool = False
 
 @dataclass()
 class Image:
@@ -59,3 +63,23 @@ class SharedState:
     def get_ball(self) -> Ball:
         return self._ball
 
+    def get_head(self) -> Head:
+        return self._head
+
+    def set_ball_unseen(self):
+        self._ball.seen = False
+
+    def is_ball_seen(self) -> bool:
+        return self._ball.seen
+
+    def is_ball_recently_seen(self) -> bool:
+        if self._ball.timestamp is None:
+            return False
+        else:
+            return self._ball.timestamp > (time.time() - 2)
+
+    def is_ball_close(self):
+        if self._ball.diameter is None:
+            return False
+        else:
+            return self._ball.diameter > 50

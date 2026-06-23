@@ -1,8 +1,9 @@
 [ros2]
 enabled = true
 camera_topic = "/camera/color/image_raw/compressed"
-head_servos_command_topic = "/g1_comp_servo/cmd"
+head_servos_command_topic = "/g1_comp_servo/cmd" # unitree_go/msg/MotoCmds
 head_servos_state_topic = "/g1_comp_servo/state"
+high_level_body_movements_topic = "/api/sport/request" # unitree_api/msg/Request
 
 [detector]
 enabled = true
@@ -16,8 +17,14 @@ width = 640 #1280
 
 [servos]
 enabled = true
-max_yaw = 50
-max_pitch = 10
-kp = 0.03
+max_yaw = 45
+max_pitch = 80
+min_pitch = -20
+kp = 0.08
 dead_zone_px = 10
 rate = 10
+
+[body]
+enabled = true
+rate=10
+

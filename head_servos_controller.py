@@ -1,7 +1,7 @@
 import threading
 import time
-from typing import Optional, Tuple
-
+from typing import Optional
+import numpy as np
 from config import Config
 from ros2_bridge import Ros2Bridge
 from shared_state import SharedState
@@ -28,37 +28,64 @@ class HeadServosController:
 
     def _run(self) -> None:
         while self._shared_state.is_running:
+            if self._shared_state.is_ball_recently_seen():
+                self._run_ball_follow()
+            else:
+                self._run_ball_research()
+
+
+    def _run_ball_follow(self) -> None:
             yaw, pitch = self._compute_target_angles() # calculate new angles
             self.look_at(yaw=yaw, pitch=pitch) # publish new angles
             self._rate.sleep() # wait for the desired rate
 
-    def _compute_target_angles(self) -> Tuple[float, float]:
+    def _run_ball_research(self) -> None:
+        t = 0.0
+        dt = 0.05
+        speed = 2  # radians/seconde
+
+        while not self._shared_state.is_ball_seen():
+            pitch = 3 + 20 * np.cos(t)
+            yaw = 0 + 45 * np.sin(t)
+
+            self.look_at(yaw=yaw, pitch=pitch)
+
+            t += speed * dt
+            time.sleep(dt)
+
+    def _compute_target_angles(self):
         ball = self._shared_state.get_ball()
-        head = self._shared_state._head
+        head = self._shared_state.get_head()
 
-        error_x = self._config.camera.width / 2.0 - ball.x
-        error_y = self._config.camera.height / 2.0 - ball.y
-
-        yaw = self._apply_p_control(current=head.yaw, error=error_x)
-        pitch = self._apply_p_control(current=head.pitch, error=error_y)
+        yaw = self._apply_p_control(current=head.yaw, error=ball.error_x)
+        pitch = self._apply_p_control(current=head.pitch, error=ball.error_y)
         return yaw, pitch
 
     def _apply_p_control(self, current: float, error: float) -> float:
-        if abs(error) <= self._config.servos.dead_zone_px:
+        if error is None or abs(error) <= self._config.servos.dead_zone_px:
             return current
 
         return current + self._config.servos.kp * error
 
     def look_at(self, yaw: float, pitch: float) -> None:
-        yaw = self._clamp(value=yaw, limit=self._config.servos.max_yaw)
-        pitch = self._clamp(value=pitch, limit=self._config.servos.max_pitch)
-
+        yaw = self._clamp(value=yaw, min=-self._config.servos.max_yaw, max=self._config.servos.max_yaw)
+        pitch = self._clamp(value=pitch, min=self._config.servos.min_pitch, max=self._config.servos.max_pitch)
+        #print(f"Ask head position yaw={yaw}, pitch={pitch}")
         self._ros2_bridge.publish_head_command(yaw=yaw, pitch=pitch)
 
     @staticmethod
-    def _clamp(value: float, limit: float) -> float:
-        if value > limit:
-            return limit
-        if value < -limit:
-            return -limit
+    def _clamp(value: float, min: float, max: float) -> float:
+        if value > max:
+            return max
+        if value < min:
+            return min
         return value
+
+    def _wait_for_ball(self):
+        print("Waiting for ball...")
+        while True:
+            ball = self._shared_state.get_ball()
+            if ball.x is not None and ball.y is not None:
+                break
+            self._rate.sleep()
+        print("Ball detected for the first time")

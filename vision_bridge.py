@@ -4,6 +4,7 @@ from typing import Optional
 
 from config import Config
 from shared_state import SharedState, Image, Ball
+from timing import Rate
 from yolo_detector import YoloDetector
 
 
@@ -12,7 +13,8 @@ class VisionBridge:
         self._shared_state: SharedState = shared_state
         self._config: Config = config
         self._thread: Optional[threading.Thread] = None
-        self.yolo_detector: YoloDetector = YoloDetector(model_path=self._config.detector.yolo_model_path, confidence_threshold=self._config.detector.yolo_confidence_threshold)
+        self._rate: Rate = Rate(self._config.detector.rate)
+        self.yolo_detector: YoloDetector = YoloDetector(config=self._config)
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -29,7 +31,6 @@ class VisionBridge:
 
 
     def stop(self) -> None:
-        self._shared_state.is_running = False
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=5)
 
@@ -38,12 +39,16 @@ class VisionBridge:
         while self._shared_state.is_running:
             image: Image = self._shared_state.get_image()
             if image.raw is None:
-                time.sleep(0.05)
+                self._rate.sleep()
                 continue
 
-            detected_ball = self.yolo_detector.detect_ball(image=image)
-            if detected_ball is not None:
-                print(f"Detected ball at x={detected_ball.x:.1f}, y={detected_ball.y:.1f}, confidence={detected_ball.confidence:.2f}")
+            detected_ball: Optional[Ball] = self.yolo_detector.detect_ball(image=image)
+            if detected_ball is None:
+                if self._shared_state.is_ball_seen():
+                    self._shared_state.set_ball_unseen()
+                    print("Ball disappeared")
+            else:
+                print(f"Detected ball at x={detected_ball.x:.1f}, y={detected_ball.y:.1f}, c={detected_ball.confidence:.2f}, d={detected_ball.diameter:.2f}")
                 self._shared_state.set_ball(detected_ball)
 
         print("Vision module ended")
