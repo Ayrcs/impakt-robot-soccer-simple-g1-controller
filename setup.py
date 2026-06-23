@@ -6,13 +6,13 @@ setup(
     version="0.1.0",
     description="Simple G1 robot soccer controller using ROS 2 camera images.",
     python_requires=">=3.8",
-    py_modules=[
-        "ball",
-        "config",
-        "main",
-        "ros2_bridge",
-        "shared_state",
+    packages=[
+        "robot_soccer",
+        "robot_soccer.control",
+        "robot_soccer.ros",
+        "robot_soccer.vision",
     ],
+    py_modules=["main"],
     install_requires=[
         "numpy>=1.24,<1.25; python_version < '3.9'",
         "numpy>=1.24; python_version >= '3.9'",

@@ -1,11 +1,10 @@
 import threading
-import time
 from typing import Optional
 
-from config import Config
-from ros2_bridge import Ros2Bridge
-from shared_state import SharedState
-from timing import Rate
+from robot_soccer.config import Config
+from robot_soccer.ros.ros2_bridge import Ros2Bridge
+from robot_soccer.state import SharedState
+from robot_soccer.timing import Rate
 
 
 class BodyController:
@@ -58,8 +57,13 @@ class BodyController:
             self._rate.sleep()
         print("Ball detected for the first time")
 
-    def move(self, surge: float = 0.0, sway: float = 0.0, yaw: float = 0.0,
-                                    duration: float = 0.0) -> None:
+    def move(
+        self,
+        surge: float = 0.0,
+        sway: float = 0.0,
+        yaw: float = 0.0,
+        duration: float = 0.0,
+    ) -> None:
         self._ros2_bridge.publish_body_command(surge=surge, sway=sway, yaw=yaw, duration=duration)
 
     def hold(self):

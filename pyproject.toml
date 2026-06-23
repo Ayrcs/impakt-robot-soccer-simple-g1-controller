@@ -16,10 +16,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = [
-    "ball",
-    "config",
-    "main",
-    "ros2_bridge",
-    "shared_state",
-]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+include = ["robot_soccer*"]

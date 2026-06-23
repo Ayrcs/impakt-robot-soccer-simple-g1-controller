@@ -14,8 +14,8 @@ from unitree_api.msg import Request, RequestHeader, RequestIdentity, RequestLeas
 
 import numpy as np
 
-from config import Config
-from shared_state import SharedState, Head
+from robot_soccer.config import Config
+from robot_soccer.state import Head, SharedState
 
 
 class Ros2Bridge(Node):

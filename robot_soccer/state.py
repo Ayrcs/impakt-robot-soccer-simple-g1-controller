@@ -14,6 +14,7 @@ class Head:
     pitch: float = None
     timestamp: float = None
 
+
 @dataclass()
 class Ball:
     x: float = None
@@ -26,10 +27,12 @@ class Ball:
     confidence: float = None
     seen: bool = False
 
+
 @dataclass()
 class Image:
     raw: Optional[np.ndarray] = None
     timestamp: float = None
+
 
 
 class SharedState:
@@ -43,11 +46,11 @@ class SharedState:
     def get_image(self) -> Image:
         return self._image
 
-    def set_image(self, image: Optional[np.ndarray] = None, timestamp: float = time.time() ) -> None:
+    def set_image(self, image: Optional[np.ndarray] = None, timestamp: Optional[float] = None) -> None:
         with self._lock:
             if image is not None:
                 self._image.raw = image
-                self._image.timestamp = timestamp
+                self._image.timestamp = timestamp if timestamp is not None else time.time()
 
     def save_image(self, image: Optional[Image] = None) -> None:
         if image is None:

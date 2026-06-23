@@ -16,7 +16,7 @@ class Config:
         self.detector = None
         self.ros2 = None
 
-        self.path = Path(path) if path is not None else Path(__file__).with_name("config.toml")
+        self.path = Path(path) if path is not None else Path(__file__).parents[1] / "config.toml"
         data = self._load_toml(self.path)
 
         for key, value in data.items():

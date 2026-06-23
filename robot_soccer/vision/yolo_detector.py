@@ -3,13 +3,12 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from statistics import mean
-from typing import Optional, Tuple
+from typing import Optional
 
-from fontTools.ttLib.tables.otTables import DeltaSetIndexMap
 from ultralytics import YOLO
 
-from config import Config
-from shared_state import Image, Ball
+from robot_soccer.config import Config
+from robot_soccer.state import Ball, Image
 
 
 class YoloDetector:
@@ -70,7 +69,7 @@ class YoloDetector:
                     diameter=diameter,
                     timestamp=time.time(),
                     confidence=confidence,
-                    seen=True
+                    seen=True,
                 )
 
                 if biggest_ball is None:

@@ -1,14 +1,16 @@
 import threading
 import time
 from typing import Optional
+
 import numpy as np
-from config import Config
-from ros2_bridge import Ros2Bridge
-from shared_state import SharedState
-from timing import Rate
+
+from robot_soccer.config import Config
+from robot_soccer.ros.ros2_bridge import Ros2Bridge
+from robot_soccer.state import SharedState
+from robot_soccer.timing import Rate
 
 
-class HeadServosController:
+class HeadController:
     def __init__(self, shared_state: SharedState, ros2_bridge: Ros2Bridge, config: Config) -> None:
         self._shared_state: SharedState = shared_state
         self._ros2_bridge: Ros2Bridge = ros2_bridge
@@ -33,18 +35,17 @@ class HeadServosController:
             else:
                 self._run_ball_research()
 
-
     def _run_ball_follow(self) -> None:
-            yaw, pitch = self._compute_target_angles() # calculate new angles
-            self.look_at(yaw=yaw, pitch=pitch) # publish new angles
-            self._rate.sleep() # wait for the desired rate
+        yaw, pitch = self._compute_target_angles()
+        self.look_at(yaw=yaw, pitch=pitch)
+        self._rate.sleep()
 
     def _run_ball_research(self) -> None:
         t = 0.0
         dt = 0.05
         speed = 2  # radians/seconde
 
-        while not self._shared_state.is_ball_seen():
+        while self._shared_state.is_running and not self._shared_state.is_ball_seen():
             pitch = 3 + 20 * np.cos(t)
             yaw = 0 + 45 * np.sin(t)
 
@@ -70,7 +71,6 @@ class HeadServosController:
     def look_at(self, yaw: float, pitch: float) -> None:
         yaw = self._clamp(value=yaw, min=-self._config.servos.max_yaw, max=self._config.servos.max_yaw)
         pitch = self._clamp(value=pitch, min=self._config.servos.min_pitch, max=self._config.servos.max_pitch)
-        #print(f"Ask head position yaw={yaw}, pitch={pitch}")
         self._ros2_bridge.publish_head_command(yaw=yaw, pitch=pitch)
 
     @staticmethod
