@@ -1,0 +1,23 @@
+[ros2]
+enabled = true
+camera_topic = "/camera/color/image_raw/compressed"
+head_servos_command_topic = "/g1_comp_servo/cmd"
+head_servos_state_topic = "/g1_comp_servo/state"
+
+[detector]
+enabled = true
+yolo_model_path = "models/ball_yolov8.pt"
+yolo_confidence_threshold = 0.7
+rate = 10
+
+[camera]
+height = 480 #720
+width = 640 #1280
+
+[servos]
+enabled = true
+max_yaw = 50
+max_pitch = 10
+kp = 0.03
+dead_zone_px = 10
+rate = 10
