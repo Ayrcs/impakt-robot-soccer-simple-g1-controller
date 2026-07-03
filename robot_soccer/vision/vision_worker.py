@@ -43,7 +43,7 @@ class VisionWorker:
 
             detected_ball: Optional[Ball] = self.yolo_detector.detect_ball(image=image)
             if detected_ball is None:
-                if self._shared_state.is_ball_seen():
+                if self._shared_state.is_ball_seen_now():
                     self._shared_state.set_ball_unseen()
                     print("Ball disappeared")
             else:

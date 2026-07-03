@@ -1,4 +1,7 @@
+import time
 from enum import Enum
+from pathlib import Path
+import wave
 
 from robot_soccer.config import Config
 from robot_soccer.ros.ros2_bridge import Ros2Bridge
@@ -25,9 +28,34 @@ class Sound(Enum):
 
 class AudioController:
     def __init__(self, ros2_bridge: Ros2Bridge, config: Config):
-        self._ros2_bridge = ros2_bridge
-        self._config = config
+        self._ros2_bridge: Ros2Bridge = ros2_bridge
+        self._config: Config = config
+        self._sounds_dir: Path = Path(self._config.audio.path)
 
-    def play(self, sound: Sound):
-        print(f"Playing sound {sound.value}")
-        pass #TODO: connecter a ROS2
+    def play(self, sound: Sound, wait: bool = False) -> None:
+        wav_path = self._sounds_dir / sound.value
+        pcm, duration = self._read_wav_pcm(wav_path)
+        self._ros2_bridge.publish_audio(pcm=pcm)
+        print(f"Playing sound {sound.value} ({len(pcm)} PCM bytes)")
+        if wait:
+            time.sleep(duration)
+
+    def _read_wav_pcm(self, path: Path) -> tuple[bytes, float]:
+        with wave.open(str(path), "rb") as wav:
+            channels = wav.getnchannels()
+            rate = wav.getframerate()
+            width = wav.getsampwidth()
+            frames = wav.getnframes()
+
+            if channels != 1:
+                raise ValueError(f"WAV must be mono, got {channels} channels: {path}")
+
+            if rate != 16000:
+                raise ValueError(f"WAV must be 16000 Hz, got {rate}: {path}")
+
+            if width != 2:
+                raise ValueError(f"WAV must be 16-bit PCM, got sample width {width}: {path}")
+
+            pcm = wav.readframes(frames)
+            duration = frames / rate
+            return pcm, duration

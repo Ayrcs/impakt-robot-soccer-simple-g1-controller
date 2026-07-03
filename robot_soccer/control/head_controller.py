@@ -27,7 +27,7 @@ class HeadController:
         dt = 0.05
         speed = 2  # radians/seconde
 
-        while self._shared_state.is_running and not self._shared_state.is_ball_seen():
+        while self._shared_state.is_running and not self._shared_state.is_ball_seen_now():
             pitch = 3 + 20 * np.cos(t)
             yaw = 0 + 45 * np.sin(t)
 
@@ -36,7 +36,7 @@ class HeadController:
             t += speed * dt
             time.sleep(dt)
 
-        return self._shared_state.is_ball_recently_seen()
+        return self._shared_state.is_ball_seen_recently()
 
     def _compute_target_angles(self):
         ball = self._shared_state.get_ball()
@@ -47,6 +47,9 @@ class HeadController:
         return yaw, pitch
 
     def _apply_p_control(self, current: float, error: float) -> float:
+        if current is None:
+            current = 0.0
+
         if error is None or abs(error) <= self._config.servos.dead_zone_px:
             return current
 

@@ -5,6 +5,8 @@ from threading import Thread
 from typing import Optional
 
 from robot_soccer.audio.audio_controller import AudioController, Sound
+from robot_soccer.behavior import health_check
+from robot_soccer.behavior.health_check import HealthCheck
 from robot_soccer.behavior.states import Behavior
 from robot_soccer.config import Config
 from robot_soccer.control.body_controller import BodyController
@@ -14,7 +16,8 @@ from robot_soccer.timing import Rate
 
 
 class BehaviorController:
-    def __init__(self, shared_state: SharedState, body: BodyController, head: HeadController, audio: AudioController, config: Config):
+    def __init__(self, shared_state: SharedState, body: BodyController, head: HeadController, audio: AudioController, config: Config, health_check: HealthCheck):
+        self._health_check = health_check
         self._config = config
         self._audio = audio
         self._head = head
@@ -38,29 +41,24 @@ class BehaviorController:
         while self._shared_state.is_running:
             behavior = self._shared_state.get_behavior()
 
-            match behavior:
-                case Behavior.BOOTING:
-                    self._run_booting()
-
-                case Behavior.SEARCH_BALL:
-                    self._run_search_ball()
-
-                case Behavior.FOLLOW_BALL:
-                    self._run_follow_ball()
-
-                case Behavior.DONE:
-                    self._run_done()
-
-                case _:
-                    self._run_done()
+            if behavior == Behavior.BOOTING:
+                self._run_booting()
+            elif behavior == Behavior.SEARCH_BALL:
+                self._run_search_ball()
+            elif behavior == Behavior.FOLLOW_BALL:
+                self._run_follow_ball()
+            elif behavior == Behavior.DONE:
+                self._run_done()
+            else:
+                self._run_done()
 
             self._rate.sleep()
 
     def _run_booting(self):
-        print("Booting...")
         self._body.hold() # Aucun mouvements
-        self._audio.play(sound=Sound.HELLO)
-        time.sleep(2) # Attendre
+        self._audio.play(sound=Sound.HELLO, wait=True)
+        if not self._health_check.start():
+            self._audio.play(sound=Sound.CANT_ACCESS_SENSORS, wait=True)
         self._shared_state.set_behavior(Behavior.SEARCH_BALL) # Chercher la balle
 
     def _run_search_ball(self):
@@ -72,7 +70,7 @@ class BehaviorController:
             while True:
                 time.sleep(3)
                 if flag.is_set() or not self._shared_state.is_running: break
-                self._body.move(yaw=0.5)
+                self._body.move(yaw=1)
 
         def timeout(flag: threading.Event):
             while True:
@@ -82,11 +80,11 @@ class BehaviorController:
 
         def found(flag: threading.Event):
             self._audio.play(sound=Sound.BALL_FOUND)
-            self._shared_state.set_behavior(Behavior.FOLLOW_BALL)
-            self._body.hold()
-            flag.set()  # Arrêt du mouvement
+            self._body.hold() # Arrêt du mouvement
+            self._shared_state.set_behavior(Behavior.FOLLOW_BALL) # Modifier la prochaine étape
+            flag.set() # Enclencher la prochaine étape
 
-        print("Searching ball...")
+        self._audio.play(sound=Sound.LOOKING_AROUND)
         flag = threading.Event() # Event de fin
         threads = [
             Thread(target=move, args=(flag,), daemon=True),
@@ -98,72 +96,69 @@ class BehaviorController:
         self._body.hold()
 
     def _run_follow_ball(self):
-        def look(flag: threading.Event):
-            while not flag.is_set() and self._shared_state.is_running:
-                if self._shared_state.is_ball_recently_seen():
-                    self._head.stare_ball()
+        def camera_follow(flag: threading.Event, unseen: threading.Event):
+            while not flag.is_set() or self._shared_state.is_running:
+                self._head.stare_ball()
                 self._rate.sleep()
+                if not self._shared_state.is_ball_seen_recently(): unseen.set()
+                else: unseen.clear()
 
-        def walk(flag: threading.Event):
-            ln = math.log
-            since: float = time.time()
+        def move(flag: threading.Event):
+            play_good_distance: bool = True
+            play_getting_closer: bool = True
 
-            while not flag.is_set() and self._shared_state.is_running:
-                if not self._shared_state.is_ball_close() and self._shared_state.is_ball_seen():
-                    since = time.time()
-                    self._audio.play(sound=Sound.GETTING_CLOSER)
+            while not flag.is_set() or self._shared_state.is_running:
+                surge: float = 0.0
+                yaw: float = 0.0
 
-                    while not flag.is_set() and self._shared_state.is_running:
-                        # Ball trouvée
-                        if not self._shared_state.is_ball_close() and self._shared_state.is_ball_seen():
-                            diameter = self._shared_state.get_ball().diameter
-                            surge = ln(max(1.0, self._config.detector.near_ball_px_diameter - diameter)) / self._config.body.caution_factor
-                            self._body.move(surge=surge)
-                            self._rate.sleep()
-
-                        # Balle proche
-                        elif self._shared_state.is_ball_close():
-                            since = time.time()
-                            self._body.hold()
+                # surge
+                if self._shared_state.is_ball_seen_now(): # Si la balle est vue
+                    diameter = self._shared_state.get_ball().diameter
+                    if diameter < self._config.detector.ball_close2_diameter:  # Balle lointaine
+                        play_good_distance = True
+                        surge = 0.8
+                        if play_getting_closer:
+                            play_getting_closer = False
+                            self._audio.play(sound=Sound.GETTING_CLOSER)
+                    elif diameter < self._config.detector.ball_close1_diameter:
+                        surge = 0.3
+                    elif diameter > self._config.detector.ball_close1_diameter:
+                        play_getting_closer = True
+                        if play_good_distance:
+                            play_good_distance = False
                             self._audio.play(sound=Sound.GOOD_DISTANCE)
-                            break
+                    else:
+                        pass
 
-                        # Balle perdue
-                        else:
-                            since = time.time()
-                            self._body.hold()
-                            self._audio.play(sound=Sound.BALL_LOST)
-                            break
+                # yaw
+                if self._shared_state.is_ball_seen_recently():
+                    head_yaw = self._shared_state.get_head().yaw
+                    if abs(head_yaw) > 40:
+                        yaw = math.copysign(1.0, head_yaw)
+                        surge = min(0.2, surge)
+                    elif abs(head_yaw) > 30:
+                        yaw = math.copysign(0.8, head_yaw)
+                        surge = min(0.3, surge)
+                    elif abs(head_yaw) > 15:
+                        yaw = math.copysign(0.5, head_yaw)
 
-                elif self._shared_state.is_ball_close() and self._shared_state.is_ball_recently_seen():
-                    if time.time() - since >= 3:
-                        goal(flag)
-
-                else:
-                    if time.time() - since >= 10:
-                        lost(flag)
-
+                self._body.move(surge=surge, yaw=yaw)
                 self._rate.sleep()
 
-        def lost(flag: threading.Event):
-            if not flag.is_set():
-                flag.set()
-                self._body.hold()
-                self._audio.play(sound=Sound.CANT_FIND_BALL)
-                self._shared_state.set_behavior(Behavior.SEARCH_BALL)
+        def timeout(flag: threading.Event, unseen: threading.Event):
+            while not flag.is_set() or self._shared_state.is_running:
+                unseen.wait()
+                time.sleep(5)
+                if unseen.is_set():
+                    self._shared_state.set_behavior(Behavior.SEARCH_BALL)
+                    flag.set()
 
-        def goal(flag: threading.Event):
-            if not flag.is_set():
-                flag.set()
-                self._body.hold()
-                self._shared_state.set_behavior(Behavior.DONE)
-
-
-        print("Following ball...")
         flag = threading.Event()  # Event de fin
+        unseen = threading.Event()  # Event de fin
         threads = [
-            Thread(target=look, args=(flag,), daemon=True),
-            Thread(target=walk, args=(flag,), daemon=True),
+            Thread(target=camera_follow, args=(flag,unseen,), daemon=True),
+            Thread(target=move, args=(flag,), daemon=True),
+            Thread(target=timeout, args=(flag,unseen,), daemon=True),
         ]
         for thread in threads: thread.start()
         flag.wait()  # Attendre l'event de fin

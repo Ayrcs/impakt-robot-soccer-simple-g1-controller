@@ -83,10 +83,10 @@ class SharedState:
     def set_ball_unseen(self):
         self._ball.seen = False
 
-    def is_ball_seen(self) -> bool:
+    def is_ball_seen_now(self) -> bool:
         return self._ball.seen
 
-    def is_ball_recently_seen(self) -> bool:
+    def is_ball_seen_recently(self) -> bool:
         if self._ball.timestamp is None:
             return False
         else:
@@ -96,5 +96,5 @@ class SharedState:
         return (
                 self._ball.seen
                 and self._ball.diameter is not None
-                and self._ball.diameter > 50
+                and self._ball.diameter > (self._config.detector.ball_close_diameter - 10)
         )

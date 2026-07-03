@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import threading
 import time
@@ -15,6 +17,11 @@ from unitree_go.msg import MotorStates, MotorCmd, MotorCmds
 
 from robot_soccer.config import Config
 from robot_soccer.state import Head, SharedState
+
+
+DEFAULT_AUDIO_REQUEST_TOPIC = "/api/voice/request"
+DEFAULT_AUDIO_START_PLAY_API_ID = 1003
+DEFAULT_AUDIO_APP_NAME = "robot_soccer"
 
 
 class Ros2Bridge(Node):
@@ -57,6 +64,13 @@ class Ros2Bridge(Node):
             10,
         )
 
+        # Publisher for audio client
+        self._audio_request_publisher = self.create_publisher(
+            Request,
+            config.ros2.audio_client_topic,
+            10,
+        )
+
     def start(self) -> None:
         if self._spin_thread is not None and self._spin_thread.is_alive():
             return
@@ -79,6 +93,12 @@ class Ros2Bridge(Node):
 
         self.destroy_node()
         print("Stopping ros2_bridge")
+
+    def get_subscribed_topics(self) -> dict[str, str]:
+        return {
+            "camera": self._config.ros2.camera_topic,
+            "head_servos_state": self._config.ros2.head_servos_state_topic,
+        }
 
     def _spin(self) -> None:
         try:
@@ -118,6 +138,10 @@ class Ros2Bridge(Node):
         self._body_high_level_command_publisher.publish(message)
         print(f"Published head message={message}")
 
+    def publish_audio(self, pcm: bytes) -> None:
+        message: Request = self._build_audio_payload(pcm=pcm)
+        self._audio_request_publisher.publish(message)
+
     def _build_head_command_payload(self, mode: int, yaw: float, pitch: float) -> MotorCmds:
         return MotorCmds(
             cmds=[
@@ -147,4 +171,30 @@ class Ros2Bridge(Node):
                 "duration": float(duration),
             }),
             binary=[],
+        )
+
+    def _build_audio_payload(self, pcm: bytes) -> Request:
+        audio_config = getattr(self._config, "audio", None)
+        api_id = getattr(audio_config, "start_play_api_id", DEFAULT_AUDIO_START_PLAY_API_ID)
+        app_name = getattr(audio_config, "app_name", DEFAULT_AUDIO_APP_NAME)
+
+        return Request(
+            header=RequestHeader(
+                identity=RequestIdentity(
+                    id=0,
+                    api_id=int(api_id),
+                ),
+                lease=RequestLease(
+                    id=0,
+                ),
+                policy=RequestPolicy(
+                    priority=0,
+                    noreply=False,
+                ),
+            ),
+            parameter=json.dumps({
+                "app_name": str(app_name),
+                "stream_id": str(int(time.time() * 1000)),
+            }),
+            binary=list(pcm),
         )

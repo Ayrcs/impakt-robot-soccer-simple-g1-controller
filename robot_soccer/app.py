@@ -1,5 +1,6 @@
 from robot_soccer.audio.audio_controller import AudioController
 from robot_soccer.behavior.behavior_controller import BehaviorController
+from robot_soccer.behavior.health_check import HealthCheck
 from robot_soccer.config import Config
 from robot_soccer.control.body_controller import BodyController
 from robot_soccer.control.head_controller import HeadController
@@ -40,7 +41,13 @@ class RobotApp:
         )
 
         # Spine worker
+        self._health_check = HealthCheck(
+            config=self._config,
+            ros2_bridge=self._ros2_bridge,
+            shared_state=self.shared_state
+        )
         self._behavior_controller = BehaviorController(
+            health_check=self._health_check,
             shared_state=self.shared_state,
             head=self._head_controller,
             body=self._body_controller,
