@@ -15,6 +15,7 @@ class Config:
         self.servos = None
         self.camera = None
         self.detector = None
+        self.classes = None
         self.ros2 = None
 
         self.path = Path(path) if path is not None else Path(__file__).parents[1] / "config.toml"

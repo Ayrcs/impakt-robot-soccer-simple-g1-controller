@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 from typing import Optional
 
+from sympy.strategies.core import switch
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
 
 from robot_soccer.config import Config
-from robot_soccer.state import Ball, Image
+from robot_soccer.state import Ball, Image, Goal, YoloDetection, YoloCoordinates
 
 
 class YoloDetector:
     def __init__(self, config: Config) -> None:
         self._config = config
         self._model_path = Path(self._config.detector.yolo_model_path)
-        self._confidence_threshold = self._config.detector.yolo_confidence_threshold
+        self._classes: list[str] = list(vars(self._config.classes.labels).values())
+        self._confidence_thresholds: list[float] = list(vars(self._config.classes.threshold).values())
 
         if not self._model_path.is_file():
             raise FileNotFoundError(f"File not found or not a regular file: {self._model_path}")
@@ -24,7 +28,7 @@ class YoloDetector:
         self._model = YOLO(str(self._model_path))
         print("YOLO detector ready")
 
-    def detect_ball(self, image: Image) -> Optional[Ball]:
+    def detect(self, image: Image) -> YoloDetection:
         """
         Return None if no ball is detected.
 
@@ -32,49 +36,77 @@ class YoloDetector:
         x, y position of the ball center in the image.
         """
         frame = image.raw
-        if frame is None:
-            return None
+        if frame is None: return YoloDetection()
 
-        results = self._model(frame, verbose=False, device=0)
-        best_confidence = self._confidence_threshold
-        biggest_ball: Optional[Ball] = None
+        result: Results = self._model(frame, verbose=False, device=0)[0]
+        boxes = getattr(result, "boxes", [])
+        if boxes is None or len(boxes) == 0: return YoloDetection()
 
-        for result in results:
-            boxes = getattr(result, "boxes", None)
-            if boxes is None or len(boxes) == 0:
+        best_confidence: list[float] = self._confidence_thresholds.copy()
+        yd = YoloDetection()
+
+        for box in boxes:
+            coords = box.xyxy[0].cpu().tolist()
+            confidence = float(box.conf[0].item())
+            class_id = int(box.cls[0].item())
+
+            if not 0 <= class_id < len(self._classes):
                 continue
 
-            xyxy = boxes.xyxy.cpu().numpy()
-            confidences = boxes.conf.cpu().numpy()
-            for coords, confidence in zip(xyxy, confidences):
-                confidence_value = float(confidence)
-                if confidence_value < best_confidence:
-                    continue
+            if confidence < best_confidence[class_id]:
+                continue
 
-                x_min, y_min, x_max, y_max = [float(value) for value in coords[:4]]
-                width = max(0.0, x_max - x_min)
-                height = max(0.0, y_max - y_min)
-                x, y = x_min + width / 2.0, y_min + height / 2.0
-                diameter = mean([width, height])
+            best_confidence[class_id] = confidence
 
-                if width <= 0.0 or height <= 0.0:
-                    continue
+            x_min, y_min, x_max, y_max = (
+                float(value)
+                for value in coords
+            )
 
-                best_confidence = confidence_value
-                ball: Ball = Ball(
+            xy = YoloCoordinates(
+                x_min=int(x_min),
+                y_min=int(y_min),
+                x_max=int(x_max),
+                y_max=int(y_max),
+            )
+
+            width = max(0.0, x_max - x_min)
+            height = max(0.0, y_max - y_min)
+
+            if width <= 0.0 or height <= 0.0:
+                continue
+
+            x = x_min + width / 2.0
+            y = y_min + height / 2.0
+            diameter = (width + height) / 2.0
+
+            error_x = self._config.camera.width / 2.0 - x
+            error_y = self._config.camera.height / 2.0 - y
+
+            if self._classes[class_id] == "ball":
+                yd.ball = Ball(
                     x=x,
                     y=y,
-                    error_x=self._config.camera.width / 2.0 - x,
-                    error_y=self._config.camera.height / 2.0 - y,
+                    error_x=error_x,
+                    error_y=error_y,
                     diameter=diameter,
                     timestamp=time.time(),
                     confidence=confidence,
                     seen=True,
+                    _box=xy,
                 )
 
-                if biggest_ball is None:
-                    biggest_ball = ball
-                elif biggest_ball.diameter < diameter:
-                    biggest_ball = ball
+            elif self._classes[class_id] == "goal":
+                yd.goal = Goal(
+                    x=x,
+                    y=y,
+                    error_x=error_x,
+                    error_y=error_y,
+                    width=width,
+                    timestamp=time.time(),
+                    confidence=confidence,
+                    seen=True,
+                    _box=xy,
+                )
 
-        return biggest_ball
+        return yd

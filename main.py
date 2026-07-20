@@ -1,8 +1,6 @@
 import signal
 import time
 
-from scipy.linalg.cython_blas import dsdot
-
 from robot_soccer.app import RobotApp
 
 

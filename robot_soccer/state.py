@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import threading
 import time
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ class Ball:
     timestamp: float = None
     confidence: float = None
     seen: bool = False
+    _box: YoloCoordinates = None
 
 
 @dataclass()
@@ -37,11 +40,26 @@ class Goal:
     y: float = None
     error_x: float = None
     error_y: float = None
-    diameter: float = None
+    width: float = None
     distance: float = None
     timestamp: float = None
     confidence: float = None
     seen: bool = False
+    _box: YoloCoordinates = None
+
+
+@dataclass
+class YoloDetection:
+    ball: Optional[Ball] = None
+    goal: Optional[Goal] = None
+
+
+@dataclass
+class YoloCoordinates:
+    x_min: int
+    y_min: int
+    x_max: int
+    y_max: int
 
 
 @dataclass()
@@ -50,12 +68,20 @@ class Image:
     timestamp: float = None
 
 
+@dataclass()
+class Scene:
+    ball_goal_dx: float = None
+    ball_goal_dy: float = None
+
+
 class SharedState:
     def __init__(self, config: Config) -> None:
         self._lock = threading.Lock()
         self._ball = Ball()
+        self._goal = Goal()
         self._head = Head()
         self._image = Image()
+        self._scene = Scene()
         self._config = config
         self._behavior: Behavior = Behavior.BOOTING
         self.is_running = True
@@ -81,6 +107,19 @@ class SharedState:
             image = self._image
         cv2.imwrite("frames/last_image.jpg", image.raw)
 
+    def set_detected_objects(self, yolo_detection: YoloDetection) -> None:
+        if yolo_detection.ball is None: self._ball.seen = False
+        else: self._ball: Ball = yolo_detection.ball
+
+        if yolo_detection.goal is None: self._goal.seen = False
+        else: self._goal: Goal = yolo_detection.goal
+
+        if yolo_detection.goal is not None and yolo_detection.ball is not None:
+            dx = yolo_detection.goal.x - yolo_detection.ball.x
+            dy = yolo_detection.goal.y - yolo_detection.ball.y
+            self._scene.ball_goal_dx = dx
+            self._scene.ball_goal_dy = dy
+
     def set_ball(self, ball: Ball) -> None:
         self._ball: Ball = ball
 
@@ -89,6 +128,9 @@ class SharedState:
 
     def get_ball(self) -> Ball:
         return self._ball
+
+    def get_goal(self) -> Goal:
+        return self._goal
 
     def get_head(self) -> Head:
         return self._head
@@ -111,3 +153,15 @@ class SharedState:
                 and self._ball.diameter is not None
                 and self._ball.diameter > (self._config.detector.ball_close_diameter - 10)
         )
+
+    def set_goal_unseen(self):
+        self._goal.seen = False
+
+    def is_goal_seen_now(self) -> bool:
+        return self._goal.seen
+
+    def is_goal_seen_recently(self) -> bool:
+        if self._goal.timestamp is None:
+            return False
+        else:
+            return self._goal.timestamp > (time.time() - 2)
