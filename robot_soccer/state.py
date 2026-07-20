@@ -32,6 +32,19 @@ class Ball:
 
 
 @dataclass()
+class Goal:
+    x: float = None
+    y: float = None
+    error_x: float = None
+    error_y: float = None
+    diameter: float = None
+    distance: float = None
+    timestamp: float = None
+    confidence: float = None
+    seen: bool = False
+
+
+@dataclass()
 class Image:
     raw: Optional[np.ndarray] = None
     timestamp: float = None

@@ -5,4 +5,5 @@ class Behavior(Enum):
     BOOTING = auto()
     SEARCH_BALL = auto()
     FOLLOW_BALL = auto()
+    KICK_BALL = auto()
     DONE = auto()

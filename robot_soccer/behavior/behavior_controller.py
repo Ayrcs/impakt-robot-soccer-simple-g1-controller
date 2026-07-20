@@ -1,11 +1,11 @@
 import math
 import threading
 import time
+from math import inf
 from threading import Thread
 from typing import Optional
 
 from robot_soccer.audio.audio_controller import AudioController, Sound
-from robot_soccer.behavior import health_check
 from robot_soccer.behavior.health_check import HealthCheck
 from robot_soccer.behavior.states import Behavior
 from robot_soccer.config import Config
@@ -62,52 +62,57 @@ class BehaviorController:
         self._shared_state.set_behavior(Behavior.SEARCH_BALL) # Chercher la balle
 
     def _run_search_ball(self):
-        def search(flag: threading.Event):
+        def _search(next: threading.Event):
             if self._head.circle_until_detected():
-                found(flag)
+                _found(next)
 
-        def move(flag: threading.Event):
+        def _move(next: threading.Event):
+            moves = [(1,1), (-1,2), (1, 3), (-1, 4), (1, 2)]
             while True:
-                time.sleep(3)
-                if flag.is_set() or not self._shared_state.is_running: break
-                self._body.move(yaw=1)
+                for m in moves:
+                    time.sleep(3)
+                    if next.is_set() or not self._shared_state.is_running: break
+                    self._body.move(yaw=m[0], duration=m[1])
 
-        def timeout(flag: threading.Event):
+        def _timeout(next: threading.Event):
             while True:
-                time.sleep(10)
-                if flag.is_set() or not self._shared_state.is_running: break
+                time.sleep(15)
+                if next.is_set() or not self._shared_state.is_running: break
                 self._audio.play(sound=Sound.CANT_FIND_BALL)
 
-        def found(flag: threading.Event):
+        def _found(next: threading.Event):
             self._audio.play(sound=Sound.BALL_FOUND)
             self._body.hold() # Arrêt du mouvement
             self._shared_state.set_behavior(Behavior.FOLLOW_BALL) # Modifier la prochaine étape
-            flag.set() # Enclencher la prochaine étape
+            next.set() # Enclencher la prochaine étape
 
         self._audio.play(sound=Sound.LOOKING_AROUND)
-        flag = threading.Event() # Event de fin
+        next = threading.Event() # Event de fin
         threads = [
-            Thread(target=move, args=(flag,), daemon=True),
-            Thread(target=search, args=(flag,), daemon=True),
-            Thread(target=timeout, args=(flag,), daemon=True),
+            Thread(target=_move, args=(next,), daemon=True),
+            Thread(target=_search, args=(next,), daemon=True),
+            Thread(target=_timeout, args=(next,), daemon=True),
         ]
         for thread in threads: thread.start()
-        flag.wait() # Attendre l'event de fin
+        next.wait() # Attendre l'event de fin
         self._body.hold()
 
     def _run_follow_ball(self):
-        def camera_follow(flag: threading.Event, unseen: threading.Event):
-            while not flag.is_set() or self._shared_state.is_running:
+        def _camera_follow(flag: threading.Event, unseen: threading.Event):
+            # Si on vient de l'étape suivante, la balle n'est pas forcement vue.
+            if not self._shared_state.is_ball_seen_now(): _back(flag=flag, unseen=unseen)
+
+            while not flag.is_set() and self._shared_state.is_running:
                 self._head.stare_ball()
                 self._rate.sleep()
                 if not self._shared_state.is_ball_seen_recently(): unseen.set()
                 else: unseen.clear()
 
-        def move(flag: threading.Event):
+        def _move(flag: threading.Event):
             play_good_distance: bool = True
             play_getting_closer: bool = True
 
-            while not flag.is_set() or self._shared_state.is_running:
+            while not flag.is_set() and self._shared_state.is_running:
                 surge: float = 0.0
                 yaw: float = 0.0
 
@@ -127,6 +132,7 @@ class BehaviorController:
                         if play_good_distance:
                             play_good_distance = False
                             self._audio.play(sound=Sound.GOOD_DISTANCE)
+                            _next(flag=flag, unseen=unseen) # Prochaine étape
                     else:
                         pass
 
@@ -145,24 +151,77 @@ class BehaviorController:
                 self._body.move(surge=surge, yaw=yaw)
                 self._rate.sleep()
 
-        def timeout(flag: threading.Event, unseen: threading.Event):
-            while not flag.is_set() or self._shared_state.is_running:
+        def _timeout(flag: threading.Event, unseen: threading.Event):
+            while True:
                 unseen.wait()
                 time.sleep(5)
-                if unseen.is_set():
-                    self._shared_state.set_behavior(Behavior.SEARCH_BALL)
-                    flag.set()
+                if flag.is_set() or not self._shared_state.is_running: break
+                if unseen.is_set(): _back(flag=flag, unseen=unseen)
+
+        def _back(flag: threading.Event, unseen: threading.Event):
+            self._body.hold()  # Arrêt du mouvement
+            self._shared_state.set_behavior(Behavior.SEARCH_BALL)  # Modifier la prochaine étape
+            flag.set()  # Enclencher la prochaine étape
+            unseen.set()  # Débloquer timeout
+
+        def _next(flag: threading.Event, unseen: threading.Event):
+            self._body.hold()  # Arrêt du mouvement
+            self._shared_state.set_behavior(Behavior.KICK_BALL)  # Modifier la prochaine étape
+            flag.set()  # Enclencher la prochaine étape
+            unseen.set()  # Débloquer timeout
 
         flag = threading.Event()  # Event de fin
         unseen = threading.Event()  # Event de fin
         threads = [
-            Thread(target=camera_follow, args=(flag,unseen,), daemon=True),
-            Thread(target=move, args=(flag,), daemon=True),
-            Thread(target=timeout, args=(flag,unseen,), daemon=True),
+            Thread(target=_camera_follow, args=(flag,unseen,), daemon=True),
+            Thread(target=_move, args=(flag,), daemon=True),
+            Thread(target=_timeout, args=(flag,unseen,), daemon=True),
         ]
         for thread in threads: thread.start()
         flag.wait()  # Attendre l'event de fin
         self._body.hold()
+
+    def _run_kick_ball(self):
+        def _place_ball_at_right_foot(flag: threading.Event):
+            if not self._shared_state.is_ball_seen_now(): _ball_lost(flag=flag)
+
+            # Centrer la caméra sur les pieds et avancer vers la balle jusqu'à la voir
+            _look_at_feet()
+            while (not flag.is_set()
+                   and self._shared_state.is_ball_seen_now()
+                   and self._shared_state.get_ball().error_y > -self._config.camera.height/3):
+                self._body.move(surge=0.3)
+            self._body.hold()
+
+            # Placer la balle au pied droit
+            while (not flag.is_set()
+                   and self._shared_state.is_ball_seen_now()
+                   and not self._shared_state.get_ball().error_x < -self._config.camera.height):
+                self._body.move(surge=0.3)
+            self._body.hold()
+
+
+
+
+        def _look_at_feet():
+            while self._rate.sleep():
+                self._head.look_at(yaw=0, pitch=-inf)
+
+
+
+        def _ball_lost(flag: threading.Event):
+            self._shared_state.set_behavior(Behavior.FOLLOW_BALL)
+            flag.set()
+
+        flag = threading.Event()  # Event de fin
+        threads = [
+            Thread(target=_place_ball_at_right_foot, args=(flag,), daemon=True),
+        ]
+        for thread in threads: thread.start()
+        flag.wait()  # Attendre l'event de fin
+        self._body.hold()
+
+
 
     def _run_done(self):
         print("Done !")

@@ -8,6 +8,7 @@ from robot_soccer.config import Config
 from robot_soccer.ros.ros2_bridge import Ros2Bridge
 from robot_soccer.state import SharedState
 from robot_soccer.timing import Rate
+from robot_soccer.utils import clamp
 
 
 class HeadController:
@@ -56,14 +57,6 @@ class HeadController:
         return current + self._config.servos.kp * error
 
     def look_at(self, yaw: float, pitch: float) -> None:
-        yaw = self._clamp(value=yaw, min=-self._config.servos.max_yaw, max=self._config.servos.max_yaw)
-        pitch = self._clamp(value=pitch, min=self._config.servos.min_pitch, max=self._config.servos.max_pitch)
+        yaw = clamp(value=yaw, min=-self._config.servos.max_yaw, max=self._config.servos.max_yaw)
+        pitch = clamp(value=pitch, min=self._config.servos.min_pitch, max=self._config.servos.max_pitch)
         self._ros2_bridge.publish_head_command(yaw=yaw, pitch=pitch)
-
-    @staticmethod
-    def _clamp(value: float, min: float, max: float) -> float:
-        if value > max:
-            return max
-        if value < min:
-            return min
-        return value

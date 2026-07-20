@@ -18,7 +18,7 @@ class Rate:
         self._period = 1.0 / hz
         self._next_time = time.monotonic() + self._period
 
-    def sleep(self) -> None:
+    def sleep(self) -> bool:
         now = time.monotonic()
         delay = self._next_time - now
         if delay > 0.0:
@@ -26,3 +26,4 @@ class Rate:
             self._next_time += self._period
         else:
             self._next_time = now + self._period
+        return True

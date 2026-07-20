@@ -8,15 +8,15 @@ audio_client_topic = "/api/voice/request" # unitree_api/msg/Request
 
 [detector]
 enabled = true
-yolo_model_path = "models/ball_yolov8.pt"
+yolo_model_path = "models/ball_goal_yolov8.pt"
 yolo_confidence_threshold = 0.7
 ball_close1_diameter = 65
 ball_close2_diameter = 50
 rate = 10
 
 [camera]
-height = 480 #720
-width = 640 #1280
+height = 720
+width = 1280
 
 [servos]
 enabled = true
